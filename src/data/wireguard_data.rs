@@ -1,6 +1,7 @@
 use crate::data::wireguard_client::WireGuardClientData;
 use crate::data::wireguard_server::WireGuardServerData;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireGuardData {
@@ -15,5 +16,14 @@ impl WireGuardData {
             result += &format!("\n\n{}", client.get_server_peer_config());
         }
         result
+    }
+
+    pub fn get_client_config(&self, uuid: &Uuid) -> Option<WireGuardClientData> {
+        for client in &self.clients {
+            if &client.uuid == uuid {
+                return Some(client.clone());
+            }
+        }
+        None
     }
 }

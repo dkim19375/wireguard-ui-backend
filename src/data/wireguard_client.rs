@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireGuardClientData {
     pub name: String,
+    #[serde(serialize_with = "uuid::serde::simple::serialize")]
+    pub uuid: Uuid,
     // stored in server & client configs
     pub preshared_key: Option<String>,
     // stored in server config
@@ -19,6 +22,7 @@ pub struct WireGuardClientData {
 impl WireGuardClientData {
     pub fn get_server_peer_config(&self) -> String {
         let mut result = format!("# Name: {}", self.name);
+        result += &format!("\n#UUID: {}", self.uuid);
         result += "\n[Peer]";
         result += &format!("\nPublicKey = {}", self.public_key);
         if let Some(preshared_key) = &self.preshared_key {
