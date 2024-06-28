@@ -28,8 +28,7 @@ pub async fn start_server() {
     println!("Server started on {}", address);
 }
 
-async fn test_function(
-) -> impl IntoResponse {
+async fn test_function() -> impl IntoResponse {
     println!("Got request");
     (
         StatusCode::OK,

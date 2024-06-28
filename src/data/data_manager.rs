@@ -1,7 +1,7 @@
+use crate::data::wireguard_data::WireGuardData;
 use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write};
-use crate::data::wireguard_data::WireGuardData;
 
 pub fn read_json_file() -> Result<WireGuardData, Box<dyn Error>> {
     let mut file = File::create_new("data.json")?;
