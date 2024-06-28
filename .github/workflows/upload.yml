@@ -1,18 +1,19 @@
-name: Testing with Rust
+name: Upload (linux)
 
-on:
-  push:
-  pull_request:
+on: workflow_dispatch
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Build Rust
-      run: cargo build --verbose
-    - name: Test Rust
-      run: cargo test --verbose
+      run: cargo build --release --verbose
+    - name: Upload
+      uses: actions/upload-artifact@v4.3.3
+      with:
+        name: WireGuard UI Artifact
+        path: target/release/**.exe
