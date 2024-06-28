@@ -31,7 +31,11 @@ impl WireGuardClientData {
         result
     }
 
-    pub fn get_client_config(&self, server_public_key: &String, server_endpoint: &String) -> String {
+    pub fn get_client_config(
+        &self,
+        server_public_key: &String,
+        server_endpoint: &String,
+    ) -> String {
         let mut result = format!("# Name: {}", self.name);
         result += "\n[Interface]";
         result += &format!("\nPrivateKey = {}", self.private_key);
