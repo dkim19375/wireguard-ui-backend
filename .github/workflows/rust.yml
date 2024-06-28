@@ -1,0 +1,18 @@
+name: Testing with Rust
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build Rust
+      run: cargo build --verbose
+    - name: Test Rust
+      run: cargo test --verbose
