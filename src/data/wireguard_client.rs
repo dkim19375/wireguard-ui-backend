@@ -17,7 +17,7 @@ pub struct WireGuardClientData {
 }
 
 impl WireGuardClientData {
-    pub fn get_server_config(&self) -> String {
+    pub fn get_server_peer_config(&self) -> String {
         let mut result = format!("# Name: {}", self.name);
         result += "\n[Peer]";
         result += &format!("\nPublicKey = {}", self.public_key);
