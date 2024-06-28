@@ -2,6 +2,8 @@
 name = "wireguard-ui-backend"
 version = "0.1.0"
 edition = "2021"
+authors = ["dkim19375"]
+repository = "https://github.com/dkim19375/wireguard-ui-backend"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
