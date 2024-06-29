@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path, State};
@@ -8,12 +9,14 @@ use axum::{Json, Router};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
+use crate::data::data_manager;
 use crate::data::wireguard_client::WireGuardClientData;
 use crate::data::wireguard_server::WireGuardServerData;
 use crate::WireGuardAppValues;
 
 pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
-    let address = SocketAddr::from(([0, 0, 0, 0], 6252));
+    let address = SocketAddr::from_str(app_values.lock().unwrap().config.address.as_str())
+        .expect("Could not parse address");
     tokio::spawn(async move {
         let listener = match TcpListener::bind(address).await {
             Ok(listener) => listener,
@@ -51,10 +54,9 @@ pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
                 )
                 .route("/wireguard/peers", axum::routing::get(get_wireguard_peers))
                 .route(
-                    "/wireguard/peers/:uuid",
-                    axum::routing::get(get_wireguard_peer),
+                    "/wireguard/save",
+                    axum::routing::post(wireguard_save_config),
                 )
-                .route("/wireguard/reload", axum::routing::post(wireguard_reload))
                 .with_state(app_values)
                 .into_make_service_with_connect_info::<SocketAddr>(),
         );
@@ -141,21 +143,24 @@ async fn put_wireguard_client(
 async fn get_wireguard_peers(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
 ) -> impl IntoResponse {
-    let app_values = app_values.lock().unwrap();
-    todo!()
+    (
+        StatusCode::OK,
+        serde_json::to_string(&crate::wireguard::get_peers(app_values.clone()).unwrap()).unwrap(),
+    )
 }
 
-async fn get_wireguard_peer(
+async fn wireguard_save_config(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-    Path(uuid): Path<Uuid>,
 ) -> impl IntoResponse {
     let app_values = app_values.lock().unwrap();
-    todo!()
-}
-
-async fn wireguard_reload(
-    State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-) -> impl IntoResponse {
-    // let mut app_values = app_values.lock().unwrap();
-    todo!()
+    if let Err(error) = data_manager::save_wireguard_config(
+        &app_values.wireguard_data,
+        &app_values.config.wireguard_config_path,
+    ) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not save config: {error}"),
+        );
+    };
+    (StatusCode::OK, String::new())
 }

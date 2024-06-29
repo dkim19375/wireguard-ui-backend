@@ -1,3 +1,4 @@
+pub mod config;
 pub mod data_manager;
 pub mod wireguard_client;
 pub mod wireguard_data;
