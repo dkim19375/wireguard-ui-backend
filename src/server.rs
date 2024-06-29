@@ -12,7 +12,8 @@ use uuid::Uuid;
 use crate::data::data_manager;
 use crate::data::wireguard_client::WireGuardClientData;
 use crate::data::wireguard_server::WireGuardServerData;
-use crate::WireGuardAppValues;
+use crate::wireguard::RestartWireGuardErrorType;
+use crate::{wireguard, WireGuardAppValues};
 
 pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
     let address = SocketAddr::from_str(app_values.lock().unwrap().config.address.as_str())
@@ -145,7 +146,7 @@ async fn get_wireguard_peers(
 ) -> impl IntoResponse {
     (
         StatusCode::OK,
-        serde_json::to_string(&crate::wireguard::get_peers(app_values.clone()).unwrap()).unwrap(),
+        serde_json::to_string(&wireguard::get_peers(app_values.clone()).unwrap()).unwrap(),
     )
 }
 
@@ -162,5 +163,18 @@ async fn wireguard_save_config(
             format!("Could not save config: {error}"),
         );
     };
+    if let Err(error) = wireguard::restart_wireguard(&app_values.config.interface) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            match error {
+                RestartWireGuardErrorType::StopFailed(err) => {
+                    format!("{}: {}", "Could not stop WireGuard", err)
+                }
+                RestartWireGuardErrorType::StartFailed(err) => {
+                    format!("{}: {}", "Could not start WireGuard", err)
+                }
+            },
+        );
+    }
     (StatusCode::OK, String::new())
 }

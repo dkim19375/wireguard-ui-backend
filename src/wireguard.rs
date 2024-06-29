@@ -37,7 +37,17 @@ pub fn get_peers(
     Ok(peers)
 }
 
-pub fn restart_wireguard(interface: &String) {
-    Command::new("wg-quick").arg("down").arg(interface).output().expect("Failed to start WireGuard");
-    Command::new("wg-quick").arg("up").arg(interface).output().expect("Failed to start WireGuard");
+pub fn restart_wireguard(interface: &String) -> Result<(), RestartWireGuardErrorType> {
+    if let Err(error) = Command::new("wg-quick").arg("down").arg(interface).output() {
+        return Err(RestartWireGuardErrorType::StopFailed(error));
+    };
+    match Command::new("wg-quick").arg("up").arg(interface).output() {
+        Err(error) => Err(RestartWireGuardErrorType::StartFailed(error)),
+        _ => Ok(()),
+    }
+}
+
+pub enum RestartWireGuardErrorType {
+    StopFailed(io::Error),
+    StartFailed(io::Error),
 }
