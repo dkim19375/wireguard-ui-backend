@@ -6,6 +6,7 @@ pub struct WireGuardClientData {
     pub name: String,
     #[serde(serialize_with = "uuid::serde::simple::serialize")]
     pub uuid: Uuid,
+    pub enabled: bool,
     // stored in server & client configs
     pub preshared_key: Option<String>,
     // stored in server config
@@ -41,19 +42,24 @@ impl WireGuardClientData {
         server_endpoint: &String,
     ) -> String {
         let mut result = format!("# Name: {}", self.name);
-        result += "\n[Interface]";
-        result += &format!("\nPrivateKey = {}", self.private_key);
-        result += &format!("\nAddress = {}", self.address);
+        let prefix = if self.enabled { "\n" } else { "\n#" };
+        result += &format!("{}[Interface]", prefix);
+        result += &format!("{}PrivateKey = {}", prefix, self.private_key);
+        result += &format!("{}Address = {}", prefix, self.address);
         if let Some(dns) = &self.dns {
-            result += &format!("\nDNS = {dns}");
+            result += &format!("{}DNS = {dns}", prefix);
         }
-        result += "\n\n[Peer]";
-        result += &format!("\nPublicKey = {server_public_key}");
+        result += &format!("{}{}[Peer]", prefix, prefix);
+        result += &format!("{}PublicKey = {server_public_key}", prefix);
         if let Some(preshared_key) = &self.preshared_key {
-            result += &format!("\nPresharedKey = {preshared_key}");
+            result += &format!("{}PresharedKey = {preshared_key}", prefix);
         }
-        result += &format!("\nAllowedIPs = {}", self.client_allowed_ips.join(","));
-        result += &format!("\nEndpoint = {server_endpoint}");
+        result += &format!(
+            "{}AllowedIPs = {}",
+            prefix,
+            self.client_allowed_ips.join(",")
+        );
+        result += &format!("{}Endpoint = {server_endpoint}", prefix);
         result
     }
 }

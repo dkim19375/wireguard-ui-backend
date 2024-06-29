@@ -38,12 +38,27 @@ pub fn get_peers(
 }
 
 pub fn restart_wireguard(interface: &String) -> Result<(), RestartWireGuardErrorType> {
-    if let Err(error) = Command::new("wg-quick").arg("down").arg(interface).output() {
+    if let Err(error) = Command::new("wg-quick").arg("down").arg(interface).status() {
         return Err(RestartWireGuardErrorType::StopFailed(error));
     };
     match Command::new("wg-quick").arg("up").arg(interface).output() {
         Err(error) => Err(RestartWireGuardErrorType::StartFailed(error)),
         _ => Ok(()),
+    }
+}
+
+pub fn reload_wireguard(interface: &String) -> Result<(), io::Error> {
+    match Command::new("sudo")
+        .arg("systemctl")
+        .arg("reload")
+        .arg(format!("wg-quick@{}", interface))
+        .status()
+    {
+        Err(error) => Err(error),
+        Ok(a) => {
+            println!("A {a}");
+            Ok(())
+        },
     }
 }
 

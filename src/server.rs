@@ -54,10 +54,8 @@ pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
                     axum::routing::put(put_wireguard_client),
                 )
                 .route("/wireguard/peers", axum::routing::get(get_wireguard_peers))
-                .route(
-                    "/wireguard/save",
-                    axum::routing::post(wireguard_save_config),
-                )
+                .route("/wireguard/restart", axum::routing::post(wireguard_restart))
+                .route("/wireguard/reload", axum::routing::post(wireguard_reload))
                 .with_state(app_values)
                 .into_make_service_with_connect_info::<SocketAddr>(),
         );
@@ -150,7 +148,7 @@ async fn get_wireguard_peers(
     )
 }
 
-async fn wireguard_save_config(
+async fn wireguard_restart(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
 ) -> impl IntoResponse {
     let app_values = app_values.lock().unwrap();
@@ -176,5 +174,27 @@ async fn wireguard_save_config(
             },
         );
     }
+    (StatusCode::OK, String::new())
+}
+
+async fn wireguard_reload(
+    State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
+) -> impl IntoResponse {
+    let app_values = app_values.lock().unwrap();
+    if let Err(error) = data_manager::save_wireguard_config(
+        &app_values.wireguard_data,
+        &app_values.config.wireguard_config_path,
+    ) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not save config: {error}"),
+        );
+    };
+    if let Err(error) = wireguard::reload_wireguard(&app_values.config.interface) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("{}: {}", "Could not reload WireGuard", error),
+        );
+    };
     (StatusCode::OK, String::new())
 }
