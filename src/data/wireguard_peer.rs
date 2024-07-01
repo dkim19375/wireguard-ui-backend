@@ -1,7 +1,8 @@
-use defguard_wireguard_rs::net::IpAddrMask;
-use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::SystemTime;
+
+use defguard_wireguard_rs::net::IpAddrMask;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,7 +14,7 @@ pub struct WireGuardPeer {
     pub address: String,
     pub protocol_version: Option<u32>,
     pub endpoint: Option<SocketAddr>,
-    pub dns: Option<String>,
+    pub dns: Vec<String>,
     pub transmitted_bytes: u64,
     pub received_bytes: u64,
     pub last_handshake: Option<SystemTime>,

@@ -17,7 +17,7 @@ pub struct WireGuardClientData {
     pub private_key: String,
     pub address: String,
     pub client_allowed_ips: Vec<String>,
-    pub dns: Option<String>,
+    pub dns: Vec<String>,
 }
 
 impl WireGuardClientData {
@@ -46,8 +46,8 @@ impl WireGuardClientData {
         result += &format!("{}[Interface]", prefix);
         result += &format!("{}PrivateKey = {}", prefix, self.private_key);
         result += &format!("{}Address = {}", prefix, self.address);
-        if let Some(dns) = &self.dns {
-            result += &format!("{}DNS = {dns}", prefix);
+        if !self.dns.is_empty() {
+            result += &format!("{}DNS = {}", prefix, self.dns.join(","));
         }
         result += &format!("{}{}[Peer]", prefix, prefix);
         result += &format!("{}PublicKey = {server_public_key}", prefix);
