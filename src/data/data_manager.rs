@@ -35,6 +35,10 @@ pub fn read_json_file() -> Result<WireGuardData, Box<dyn Error>> {
         .open("data.json")?;
     let mut data = String::new();
     file.read_to_string(&mut data)?;
+    
+    if data.trim().is_empty() {
+        data = "{}".into();
+    }
 
     let json: WireGuardData = serde_json::from_str(&data)?;
     Ok(json)
@@ -50,6 +54,6 @@ pub fn save_json_file(data: &WireGuardData) -> Result<(), Box<dyn Error>> {
 pub fn save_wireguard_config(data: &WireGuardData, file_path: &String) -> Result<(), io::Error> {
     let mut file = File::create(file_path)?;
     let config = data.get_server_config();
-    file.write_all(config.as_bytes())?;
+    file.write_all(config.unwrap_or_else(|| String::new()).as_bytes())?;
     Ok(())
 }

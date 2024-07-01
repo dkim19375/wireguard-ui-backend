@@ -1,21 +1,27 @@
-use crate::data::wireguard_client::WireGuardClientData;
-use crate::data::wireguard_server::WireGuardServerData;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use crate::data::wireguard_client::WireGuardClientData;
+use crate::data::wireguard_server::WireGuardServerData;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WireGuardData {
-    pub server: WireGuardServerData,
+    pub server: Option<WireGuardServerData>,
+    #[serde(default = "Vec::new")]
     pub clients: Vec<WireGuardClientData>,
 }
 
 impl WireGuardData {
-    pub fn get_server_config(&self) -> String {
-        let mut result = self.server.get_interface_config();
+    pub fn get_server_config(&self) -> Option<String> {
+        let server = match self.server {
+            Some(ref server) => server,
+            None => return None,
+        };
+        let mut result = server.get_interface_config();
         for client in &self.clients {
             result += &format!("\n\n{}", client.get_server_peer_config());
         }
-        result
+        Some(result)
     }
 
     pub fn get_client_config(&self, uuid: &Uuid) -> Option<WireGuardClientData> {

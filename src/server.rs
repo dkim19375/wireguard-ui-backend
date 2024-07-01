@@ -38,6 +38,10 @@ pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
                     axum::routing::put(put_wireguard_server),
                 )
                 .route(
+                    "/wireguard/server",
+                    axum::routing::delete(delete_wireguard_server),
+                )
+                .route(
                     "/wireguard/clients",
                     axum::routing::get(get_wireguard_clients),
                 )
@@ -80,7 +84,15 @@ async fn put_wireguard_server(
     Json(body): Json<WireGuardServerData>,
 ) -> impl IntoResponse {
     let mut app_values = app_values.lock().unwrap();
-    app_values.wireguard_data.server = body;
+    app_values.wireguard_data.server = Some(body);
+    (StatusCode::OK, "")
+}
+
+async fn delete_wireguard_server(
+    State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
+) -> impl IntoResponse {
+    let mut app_values = app_values.lock().unwrap();
+    app_values.wireguard_data.server = None;
     (StatusCode::OK, "")
 }
 

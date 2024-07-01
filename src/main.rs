@@ -13,8 +13,6 @@ mod wireguard;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // add check to require root permissions
-
     println!("Reading config file");
     let config = data::data_manager::read_config_file()?;
     data::data_manager::save_config_file(&config)?;
