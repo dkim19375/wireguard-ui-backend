@@ -51,6 +51,10 @@ pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
                     axum::routing::put(put_wireguard_clients),
                 )
                 .route(
+                    "/wireguard/clients",
+                    axum::routing::post(post_wireguard_clients),
+                )
+                .route(
                     "/wireguard/clients/:uuid",
                     axum::routing::get(get_wireguard_client),
                 )
@@ -152,6 +156,15 @@ async fn put_wireguard_client(
             )
         }
     }
+    (StatusCode::OK, String::new())
+}
+
+async fn post_wireguard_clients(
+    State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
+    Json(body): Json<WireGuardClientData>,
+) -> impl IntoResponse {
+    let mut app_values = app_values.lock().unwrap();
+    app_values.wireguard_data.clients.push(body);
     (StatusCode::OK, String::new())
 }
 
