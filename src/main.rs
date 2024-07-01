@@ -1,9 +1,10 @@
+#![cfg(target_os = "linux")]
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use defguard_wireguard_rs::WGApi;
-
+use nix::unistd::Uid;
 use crate::data::config::AppConfig;
 use crate::data::wireguard_data::WireGuardData;
 
@@ -13,6 +14,10 @@ mod wireguard;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    if !Uid::effective().is_root() {
+        panic!("This must be run as root!");
+    }
+    
     println!("Reading config file");
     let config = data::data_manager::read_config_file()?;
     data::data_manager::save_config_file(&config)?;
