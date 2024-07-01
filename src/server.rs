@@ -14,6 +14,7 @@ use crate::data::wireguard_client::WireGuardClientData;
 use crate::data::wireguard_server::WireGuardServerData;
 use crate::wireguard::RestartWireGuardErrorType;
 use crate::{wireguard, WireGuardAppValues};
+use crate::data::wireguard_data::WireGuardData;
 
 pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
     let address = SocketAddr::from_str(app_values.lock().unwrap().config.address.as_str())
@@ -60,6 +61,7 @@ pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
                 .route("/wireguard/peers", axum::routing::get(get_wireguard_peers))
                 .route("/wireguard/restart", axum::routing::post(wireguard_restart))
                 .route("/wireguard/reload", axum::routing::post(wireguard_reload))
+                .route("/sample", axum::routing::get(sample))
                 .with_state(app_values)
                 .into_make_service_with_connect_info::<SocketAddr>(),
         );
@@ -209,4 +211,43 @@ async fn wireguard_reload(
         );
     };
     (StatusCode::OK, String::new())
+}
+
+async fn sample() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        serde_json::to_string(
+            &WireGuardData {
+                server: Some(WireGuardServerData {
+                    endpoint: "endpoint.com:51820".into(),
+                    address: vec!["10.8.0.1/24".into()],
+                    dns: vec!["1.1.1.1".into()],
+                    listen_port: 51820,
+                    private_key: "oL5cNL2cZQVNLYEfg4LIEEfS6KaFN1YSmOlq5rRJjlI=".to_string(),
+                    public_key: "lDIyysZT/6cIxhy+QR77HaYNT5wGi7VIqtiyW1MSLF8=".to_string(),
+                    pre_up: None,
+                    post_up: Some("iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE".into()),
+                    pre_down: Some("iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o wlan0 -j MASQUERADE".into()),
+                    post_down: None,
+                    table: None,
+                    mtu: None,
+                }),
+                clients: vec![
+                    WireGuardClientData {
+                        name: "Sample Client".into(),
+                        uuid: Uuid::new_v4(),
+                        enabled: true,
+                        preshared_key: Some("KS4xysNuixRcArtY/iNph8dQyhXv/W1rxc0QOiDlhzs=".into()),
+                        public_key: "pzui1a/TKGcAAPjmulnDcoS95UVnQsg3bQd9AxELBBA=".to_string(),
+                        server_allowed_ips: vec!["10.8.0.2/32".into()],
+                        persistent_keep_alive: None,
+                        private_key: "qD+418LUGssYC/V6ZHJQz2YQO8PCWv9gmX4QWtKEMHg=".to_string(),
+                        address: "10.8.0.2/32".to_string(),
+                        client_allowed_ips: vec!["0.0.0.0/0".into()],
+                        dns: vec![],
+                    }
+                ]
+            }
+        ).unwrap()
+    )
 }
