@@ -19,19 +19,21 @@ pub fn get_peers(
 
     for client in &app_values.wireguard_data.clients {
         let key = Key::from_str(&client.public_key)?;
-        let raw_peer = &raw_peers[&key];
-        peers.push(WireGuardPeer {
-            name: client.name.clone(),
-            uuid: client.uuid,
-            server_allowed_ips: raw_peer.allowed_ips.clone(),
-            address: client.address.clone(),
-            protocol_version: raw_peer.protocol_version,
-            endpoint: raw_peer.endpoint,
-            dns: client.dns.clone(),
-            transmitted_bytes: raw_peer.tx_bytes,
-            received_bytes: raw_peer.rx_bytes,
-            last_handshake: raw_peer.last_handshake,
-        })
+        let raw_peer_option = &raw_peers.get(&key);
+        if let Some(raw_peer) = raw_peer_option {
+            peers.push(WireGuardPeer {
+                name: client.name.clone(),
+                uuid: client.uuid,
+                server_allowed_ips: raw_peer.allowed_ips.clone(),
+                address: client.address.clone(),
+                protocol_version: raw_peer.protocol_version,
+                endpoint: raw_peer.endpoint,
+                dns: client.dns.clone(),
+                transmitted_bytes: raw_peer.tx_bytes,
+                received_bytes: raw_peer.rx_bytes,
+                last_handshake: raw_peer.last_handshake,
+            })
+        }
     }
 
     Ok(peers)
@@ -58,7 +60,7 @@ pub fn reload_wireguard(interface: &String) -> Result<(), io::Error> {
         Ok(a) => {
             println!("A {a}");
             Ok(())
-        },
+        }
     }
 }
 

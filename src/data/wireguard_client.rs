@@ -23,15 +23,20 @@ pub struct WireGuardClientData {
 impl WireGuardClientData {
     pub fn get_server_peer_config(&self) -> String {
         let mut result = format!("# Name: {}", self.name);
-        result += &format!("\n#UUID: {}", self.uuid);
-        result += "\n[Peer]";
-        result += &format!("\nPublicKey = {}", self.public_key);
+        result += &format!("\n# UUID: {}", self.uuid);
+        let prefix = if self.enabled { "\n" } else { "\n# " };
+        result += &format!("{}[Peer]", prefix);
+        result += &format!("{}PublicKey = {}", prefix, self.public_key);
         if let Some(preshared_key) = &self.preshared_key {
-            result += &format!("\nPresharedKey = {preshared_key}");
+            result += &format!("{}PresharedKey = {preshared_key}", prefix);
         }
-        result += &format!("\nAllowedIPs = {}", self.server_allowed_ips.join(","));
+        result += &format!(
+            "{}AllowedIPs = {}",
+            prefix,
+            self.server_allowed_ips.join(",")
+        );
         if let Some(persistent_keep_alive) = self.persistent_keep_alive {
-            result += &format!("\nPersistentKeepAlive = {persistent_keep_alive}");
+            result += &format!("{}PersistentKeepAlive = {persistent_keep_alive}", prefix);
         }
         result
     }
@@ -42,24 +47,19 @@ impl WireGuardClientData {
         server_endpoint: &String,
     ) -> String {
         let mut result = format!("# Name: {}", self.name);
-        let prefix = if self.enabled { "\n" } else { "\n#" };
-        result += &format!("{}[Interface]", prefix);
-        result += &format!("{}PrivateKey = {}", prefix, self.private_key);
-        result += &format!("{}Address = {}", prefix, self.address);
+        result += "[Interface]";
+        result += &format!("PrivateKey = {}", self.private_key);
+        result += &format!("Address = {}", self.address);
         if !self.dns.is_empty() {
-            result += &format!("{}DNS = {}", prefix, self.dns.join(","));
+            result += &format!("DNS = {}", self.dns.join(","));
         }
-        result += &format!("{}{}[Peer]", prefix, prefix);
-        result += &format!("{}PublicKey = {server_public_key}", prefix);
+        result += "[Peer]";
+        result += &format!("PublicKey = {server_public_key}");
         if let Some(preshared_key) = &self.preshared_key {
-            result += &format!("{}PresharedKey = {preshared_key}", prefix);
+            result += &format!("PresharedKey = {preshared_key}");
         }
-        result += &format!(
-            "{}AllowedIPs = {}",
-            prefix,
-            self.client_allowed_ips.join(",")
-        );
-        result += &format!("{}Endpoint = {server_endpoint}", prefix);
+        result += &format!("AllowedIPs = {}", self.client_allowed_ips.join(","));
+        result += &format!("Endpoint = {server_endpoint}");
         result
     }
 }

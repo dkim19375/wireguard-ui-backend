@@ -17,11 +17,15 @@ impl WireGuardData {
             Some(ref server) => server,
             None => return None,
         };
-        let mut result = server.get_interface_config();
+        let mut result = String::new();
+        result += &String::from("# Generated from WireGuard UI\n");
+        result += &String::from("# Do not edit manually!\n\n");
+
+        result += &server.get_interface_config();
         for client in &self.clients {
             result += &format!("\n\n{}", client.get_server_peer_config());
         }
-        Some(result)
+        Some(result + "\n")
     }
 
     pub fn get_client_config(&self, uuid: &Uuid) -> Option<WireGuardClientData> {

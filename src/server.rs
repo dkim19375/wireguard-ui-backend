@@ -2,19 +2,21 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{Response, StatusCode};
 use axum::response::IntoResponse;
 use axum::{Json, Router};
+use serde::Serialize;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
 use crate::data::data_manager;
 use crate::data::wireguard_client::WireGuardClientData;
+use crate::data::wireguard_data::WireGuardData;
 use crate::data::wireguard_server::WireGuardServerData;
 use crate::wireguard::RestartWireGuardErrorType;
 use crate::{wireguard, WireGuardAppValues};
-use crate::data::wireguard_data::WireGuardData;
 
 pub async fn start_server(app_values: Arc<Mutex<WireGuardAppValues>>) {
     let address = SocketAddr::from_str(app_values.lock().unwrap().config.address.as_str())
@@ -83,7 +85,7 @@ async fn get_wireguard_server(
 ) -> impl IntoResponse {
     (
         StatusCode::OK,
-        serde_json::to_string(&app_values.lock().unwrap().wireguard_data).unwrap(),
+        Json(app_values.lock().unwrap().wireguard_data.server.clone()),
     )
 }
 
@@ -93,7 +95,8 @@ async fn put_wireguard_server(
 ) -> impl IntoResponse {
     let mut app_values = app_values.lock().unwrap();
     app_values.wireguard_data.server = Some(body);
-    (StatusCode::OK, "")
+    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
+    (StatusCode::OK, String::new())
 }
 
 async fn delete_wireguard_server(
@@ -101,7 +104,8 @@ async fn delete_wireguard_server(
 ) -> impl IntoResponse {
     let mut app_values = app_values.lock().unwrap();
     app_values.wireguard_data.server = None;
-    (StatusCode::OK, "")
+    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
+    (StatusCode::OK, String::new())
 }
 
 async fn get_wireguard_clients(
@@ -109,7 +113,7 @@ async fn get_wireguard_clients(
 ) -> impl IntoResponse {
     (
         StatusCode::OK,
-        serde_json::to_string(&app_values.lock().unwrap().wireguard_data.clients).unwrap(),
+        Json(app_values.lock().unwrap().wireguard_data.clients.clone()),
     )
 }
 
@@ -119,20 +123,22 @@ async fn put_wireguard_clients(
 ) -> impl IntoResponse {
     let mut app_values = app_values.lock().unwrap();
     app_values.wireguard_data.clients = body;
-    (StatusCode::OK, "")
+    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
+    (StatusCode::OK, String::new())
 }
 
 async fn get_wireguard_client(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
     Path(uuid): Path<Uuid>,
-) -> impl IntoResponse {
+) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
     match app_values.wireguard_data.get_client_config(&uuid) {
-        Some(client) => (StatusCode::OK, serde_json::to_string(&client).unwrap()),
-        None => (
+        Some(client) => (StatusCode::OK, Json(client)).into_response(),
+        None => ErrorResponse::from((
             StatusCode::NOT_FOUND,
             format!("Client config for uuid {} not found", uuid),
-        ),
+        ))
+        .into(),
     }
 }
 
@@ -140,7 +146,7 @@ async fn put_wireguard_client(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
     Path(uuid): Path<Uuid>,
     Json(body): Json<WireGuardClientData>,
-) -> impl IntoResponse {
+) -> Response<Body> {
     let mut app_values = app_values.lock().unwrap();
     let client_index = app_values
         .wireguard_data
@@ -150,22 +156,37 @@ async fn put_wireguard_client(
     match client_index {
         Some(index) => app_values.wireguard_data.clients[index] = body,
         None => {
-            return (
+            return ErrorResponse::from((
                 StatusCode::NOT_FOUND,
                 format!("Client config for uuid {} not found", uuid),
-            )
+            ))
+            .into()
         }
     }
-    (StatusCode::OK, String::new())
+    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
+    (StatusCode::OK, String::new()).into_response()
 }
 
 async fn post_wireguard_clients(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
     Json(body): Json<WireGuardClientData>,
-) -> impl IntoResponse {
+) -> Response<Body> {
     let mut app_values = app_values.lock().unwrap();
+    if app_values
+        .wireguard_data
+        .clients
+        .iter()
+        .any(|client| client.uuid == body.uuid)
+    {
+        return ErrorResponse::from((
+            StatusCode::CONFLICT,
+            format!("Client with uuid {} already exists", body.uuid),
+        ))
+        .into();
+    }
     app_values.wireguard_data.clients.push(body);
-    (StatusCode::OK, String::new())
+    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
+    (StatusCode::OK, String::new()).into_response()
 }
 
 async fn get_wireguard_peers(
@@ -173,25 +194,26 @@ async fn get_wireguard_peers(
 ) -> impl IntoResponse {
     (
         StatusCode::OK,
-        serde_json::to_string(&wireguard::get_peers(app_values.clone()).unwrap()).unwrap(),
+        Json(wireguard::get_peers(app_values.clone()).unwrap()),
     )
 }
 
 async fn wireguard_restart(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-) -> impl IntoResponse {
+) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
     if let Err(error) = data_manager::save_wireguard_config(
         &app_values.wireguard_data,
         &app_values.config.wireguard_config_path,
     ) {
-        return (
+        return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Could not save config: {error}"),
-        );
+        ))
+        .into();
     };
     if let Err(error) = wireguard::restart_wireguard(&app_values.config.interface) {
-        return (
+        return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             match error {
                 RestartWireGuardErrorType::StopFailed(err) => {
@@ -201,57 +223,62 @@ async fn wireguard_restart(
                     format!("{}: {}", "Could not start WireGuard", err)
                 }
             },
-        );
+        ))
+        .into();
     }
-    (StatusCode::OK, String::new())
+    (StatusCode::OK, String::new()).into_response()
 }
 
 async fn wireguard_reload(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-) -> impl IntoResponse {
+) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
     if let Err(error) = data_manager::save_wireguard_config(
         &app_values.wireguard_data,
         &app_values.config.wireguard_config_path,
     ) {
-        return (
+        return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Could not save config: {error}"),
-        );
+        ))
+        .into();
     };
     if let Err(error) = wireguard::reload_wireguard(&app_values.config.interface) {
-        return (
+        return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("{}: {}", "Could not reload WireGuard", error),
-        );
+        ))
+        .into();
     };
-    (StatusCode::OK, String::new())
+    (StatusCode::OK, String::new()).into_response()
 }
 
 async fn wireguard_start(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-) -> impl IntoResponse {
+) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
     if let Err(error) = wireguard::start_wireguard(&app_values.config.interface) {
-        return (
+        return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Could not start WireGuard: {error}"),
-        );
+        ))
+        .into();
     }
-    (StatusCode::OK, String::new())
+    (StatusCode::OK, String::new()).into_response()
 }
 
 async fn wireguard_stop(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-) -> impl IntoResponse {
+) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
     if let Err(error) = wireguard::stop_wireguard(&app_values.config.interface) {
-        return (
+        return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Could not stop WireGuard: {error}"),
-        );
+        ))
+        .into();
     }
-    (StatusCode::OK, String::new())
+    (StatusCode::OK, String::new()).into_response()
 }
 
 async fn sample() -> impl IntoResponse {
@@ -287,8 +314,65 @@ async fn sample() -> impl IntoResponse {
                         client_allowed_ips: vec!["0.0.0.0/0".into()],
                         dns: vec![],
                     }
-                ]
+                ],
             }
         ).unwrap()
     )
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorResponse {
+    pub error: ErrorResponseData,
+}
+
+impl From<(u16, String)> for ErrorResponse {
+    fn from(value: (u16, String)) -> Self {
+        ErrorResponse {
+            error: value.into(),
+        }
+    }
+}
+
+impl From<(StatusCode, String)> for ErrorResponse {
+    fn from(value: (StatusCode, String)) -> Self {
+        ErrorResponse {
+            error: value.into(),
+        }
+    }
+}
+
+impl IntoResponse for ErrorResponse {
+    fn into_response(self) -> axum::response::Response {
+        (StatusCode::from_u16(self.error.code).unwrap(), Json(self)).into_response()
+    }
+}
+
+impl From<ErrorResponse> for Response<Body> {
+    fn from(value: ErrorResponse) -> Self {
+        value.into_response()
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorResponseData {
+    pub code: u16,
+    pub message: String,
+}
+
+impl From<(u16, String)> for ErrorResponseData {
+    fn from(value: (u16, String)) -> Self {
+        ErrorResponseData {
+            code: value.0,
+            message: value.1,
+        }
+    }
+}
+
+impl From<(StatusCode, String)> for ErrorResponseData {
+    fn from(value: (StatusCode, String)) -> Self {
+        ErrorResponseData {
+            code: value.0.as_u16(),
+            message: value.1,
+        }
+    }
 }
