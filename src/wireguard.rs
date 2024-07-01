@@ -38,10 +38,10 @@ pub fn get_peers(
 }
 
 pub fn restart_wireguard(interface: &String) -> Result<(), RestartWireGuardErrorType> {
-    if let Err(error) = Command::new("wg-quick").arg("down").arg(interface).status() {
+    if let Err(error) = stop_wireguard(interface) {
         return Err(RestartWireGuardErrorType::StopFailed(error));
     };
-    match Command::new("wg-quick").arg("up").arg(interface).output() {
+    match start_wireguard(interface) {
         Err(error) => Err(RestartWireGuardErrorType::StartFailed(error)),
         _ => Ok(()),
     }
@@ -59,6 +59,20 @@ pub fn reload_wireguard(interface: &String) -> Result<(), io::Error> {
             println!("A {a}");
             Ok(())
         },
+    }
+}
+
+pub fn start_wireguard(interface: &String) -> Result<(), io::Error> {
+    match Command::new("wg-quick").arg("up").arg(interface).output() {
+        Err(error) => Err(error),
+        _ => Ok(()),
+    }
+}
+
+pub fn stop_wireguard(interface: &String) -> Result<(), io::Error> {
+    match Command::new("wg-quick").arg("down").arg(interface).output() {
+        Err(error) => Err(error),
+        _ => Ok(()),
     }
 }
 
