@@ -12,7 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: Install cross
+      run: cargo install cross
     - name: Build Rust
-      run: cargo build --verbose
+      run: cross build --verbose
     - name: Test Rust
-      run: cargo test --verbose
+      run: cross test --verbose
