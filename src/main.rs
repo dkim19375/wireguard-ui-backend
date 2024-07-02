@@ -3,10 +3,11 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::data::config::AppConfig;
-use crate::data::wireguard_data::WireGuardData;
 use defguard_wireguard_rs::WGApi;
 use nix::unistd::Uid;
+
+use crate::data::config::AppConfig;
+use crate::data::wireguard_data::WireGuardData;
 
 mod data;
 mod server;

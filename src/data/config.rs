@@ -18,14 +18,14 @@ impl AppConfig {
         if !self.network_interface.is_empty() {
             return self.network_interface.to_owned();
         }
-        netdev::interface::get_default_interface().unwrap().name
+        netdev::get_default_interface().unwrap().name
     }
-    
-    pub fn get_network_interface(&self) -> Option<Interface> {
-        let interface_name = self.get_network_interface_name();
-        netdev::interface::get_interfaces().iter().find(|interface| {
-            interface.name == interface_name
-        }).map(Interface::to_owned)
+
+    pub fn get_wireguard_network_interface(&self) -> Option<Interface> {
+        netdev::get_interfaces()
+            .iter()
+            .find(|interface| interface.name == self.interface)
+            .map(Interface::to_owned)
     }
 }
 
