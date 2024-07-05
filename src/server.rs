@@ -12,9 +12,9 @@ use tokio::net::TcpListener;
 use uuid::Uuid;
 
 use crate::data::data_manager;
-use crate::data::wireguard_client::WireGuardClientData;
-use crate::data::wireguard_data::WireGuardData;
-use crate::data::wireguard_server::WireGuardServerData;
+use crate::data::wireguard_client::{WireGuardClientData, WireGuardOptionalClientData};
+use crate::data::wireguard_data::WireGuardOptionalData;
+use crate::data::wireguard_server::WireGuardOptionalServerData;
 use crate::wireguard::RestartWireGuardErrorType;
 use crate::{wireguard, WireGuardAppValues};
 
@@ -90,13 +90,26 @@ async fn get_wireguard_server(
 }
 
 async fn put_wireguard_server(
-    State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-    Json(body): Json<WireGuardServerData>,
-) -> impl IntoResponse {
-    let mut app_values = app_values.lock().unwrap();
-    app_values.wireguard_data.server = Some(body);
+    State(app_values_arc): State<Arc<Mutex<WireGuardAppValues>>>,
+    Json(body): Json<Option<WireGuardOptionalServerData>>,
+) -> Response<Body> {
+    let mut app_values = app_values_arc.lock().unwrap();
+    let server = match body {
+        Some(server) => match server.to_wireguard_server_data(app_values_arc.clone()) {
+            Ok(server) => Some(server),
+            Err(error) => {
+                return ErrorResponse::from((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Could not create server: {error}"),
+                ))
+                .into();
+            }
+        },
+        None => None,
+    };
+    app_values.wireguard_data.server = server.clone();
     data_manager::save_json_file(&app_values.wireguard_data).unwrap();
-    (StatusCode::OK, String::new())
+    (StatusCode::OK, Json(server)).into_response()
 }
 
 async fn delete_wireguard_server(
@@ -168,25 +181,35 @@ async fn put_wireguard_client(
 }
 
 async fn post_wireguard_clients(
-    State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-    Json(body): Json<WireGuardClientData>,
+    State(app_values_arc): State<Arc<Mutex<WireGuardAppValues>>>,
+    Json(body): Json<WireGuardOptionalClientData>,
 ) -> Response<Body> {
-    let mut app_values = app_values.lock().unwrap();
+    let mut app_values = app_values_arc.lock().unwrap();
+    let new_client = match body.to_wireguard_client_data(app_values_arc.clone()) {
+        Ok(client) => client,
+        Err(error) => {
+            return ErrorResponse::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Could not create client: {error}"),
+            ))
+            .into();
+        }
+    };
     if app_values
         .wireguard_data
         .clients
         .iter()
-        .any(|client| client.uuid == body.uuid)
+        .any(|client| client.uuid == new_client.uuid)
     {
         return ErrorResponse::from((
             StatusCode::CONFLICT,
-            format!("Client with uuid {} already exists", body.uuid),
+            format!("Client with uuid {} already exists", new_client.uuid),
         ))
         .into();
     }
-    app_values.wireguard_data.clients.push(body);
+    app_values.wireguard_data.clients.push(new_client.clone());
     data_manager::save_json_file(&app_values.wireguard_data).unwrap();
-    (StatusCode::OK, String::new()).into_response()
+    (StatusCode::OK, Json(new_client)).into_response()
 }
 
 async fn get_wireguard_peers(
@@ -202,17 +225,16 @@ async fn wireguard_restart(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
 ) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
-    if let Err(error) = data_manager::save_wireguard_config(
-        &app_values.wireguard_data,
-        &app_values.config.wireguard_config_path,
-    ) {
+    if let Err(error) =
+        data_manager::save_wireguard_config(&app_values.wireguard_data, &app_values.config)
+    {
         return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Could not save config: {error}"),
         ))
         .into();
     };
-    if let Err(error) = wireguard::restart_wireguard(&app_values.config.interface) {
+    if let Err(error) = wireguard::restart_wireguard(&app_values.config.wireguard_interface) {
         return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             match error {
@@ -233,17 +255,16 @@ async fn wireguard_reload(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
 ) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
-    if let Err(error) = data_manager::save_wireguard_config(
-        &app_values.wireguard_data,
-        &app_values.config.wireguard_config_path,
-    ) {
+    if let Err(error) =
+        data_manager::save_wireguard_config(&app_values.wireguard_data, &app_values.config)
+    {
         return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Could not save config: {error}"),
         ))
         .into();
     };
-    if let Err(error) = wireguard::reload_wireguard(&app_values.config.interface) {
+    if let Err(error) = wireguard::reload_wireguard(&app_values.config.wireguard_interface) {
         return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("{}: {}", "Could not reload WireGuard", error),
@@ -257,7 +278,7 @@ async fn wireguard_start(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
 ) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
-    if let Err(error) = wireguard::start_wireguard(&app_values.config.interface) {
+    if let Err(error) = wireguard::start_wireguard(&app_values.config.wireguard_interface) {
         return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Could not start WireGuard: {error}"),
@@ -271,7 +292,7 @@ async fn wireguard_stop(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
 ) -> Response<Body> {
     let app_values = app_values.lock().unwrap();
-    if let Err(error) = wireguard::stop_wireguard(&app_values.config.interface) {
+    if let Err(error) = wireguard::stop_wireguard(&app_values.config.wireguard_interface) {
         return ErrorResponse::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Could not stop WireGuard: {error}"),
@@ -285,34 +306,33 @@ async fn sample() -> impl IntoResponse {
     (
         StatusCode::OK,
         serde_json::to_string(
-            &WireGuardData {
-                server: Some(WireGuardServerData {
+            &WireGuardOptionalData {
+                server: Some(WireGuardOptionalServerData {
                     endpoint: "endpoint.com:51820".into(),
-                    address: vec!["10.8.0.1/24".into()],
-                    dns: vec!["1.1.1.1".into()],
-                    listen_port: 51820,
-                    private_key: "oL5cNL2cZQVNLYEfg4LIEEfS6KaFN1YSmOlq5rRJjlI=".to_string(),
-                    public_key: "lDIyysZT/6cIxhy+QR77HaYNT5wGi7VIqtiyW1MSLF8=".to_string(),
+                    address: Some(vec!["10.8.0.1/24".into()]),
+                    dns: Some(vec!["1.1.1.1".into()]),
+                    listen_port: Some(51820),
+                    private_key: Some("oL5cNL2cZQVNLYEfg4LIEEfS6KaFN1YSmOlq5rRJjlI=".to_string()),
                     pre_up: None,
-                    post_up: Some("iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE".into()),
+                    post_up: Some("iptables -A FORWARD -i {WIREGUARD_INTERFACE} -j ACCEPT; iptables -t nat -A POSTROUTING -o {NETWORK_INTERFACE} -j MASQUERADE".into()),
                     pre_down: None,
-                    post_down: Some("iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o wlan0 -j MASQUERADE".into()),
+                    post_down: Some("iptables -D FORWARD -i {WIREGUARD_INTERFACE} -j ACCEPT; iptables -t nat -D POSTROUTING -o {NETWORK_INTERFACE} -j MASQUERADE".into()),
                     table: None,
                     mtu: None,
                 }),
                 clients: vec![
-                    WireGuardClientData {
+                    WireGuardOptionalClientData {
                         name: "Sample Client".into(),
-                        uuid: Uuid::new_v4(),
-                        enabled: true,
+                        uuid: Some(Uuid::new_v4()),
+                        enabled: Some(true),
+                        generate_preshared_key: Some(true),
                         preshared_key: Some("KS4xysNuixRcArtY/iNph8dQyhXv/W1rxc0QOiDlhzs=".into()),
-                        public_key: "pzui1a/TKGcAAPjmulnDcoS95UVnQsg3bQd9AxELBBA=".to_string(),
-                        server_allowed_ips: vec!["10.8.0.2/32".into()],
+                        server_allowed_ips: Some(vec!["10.8.0.2/32".into()]),
                         persistent_keep_alive: None,
-                        private_key: "qD+418LUGssYC/V6ZHJQz2YQO8PCWv9gmX4QWtKEMHg=".to_string(),
-                        address: "10.8.0.2/32".to_string(),
-                        client_allowed_ips: vec!["0.0.0.0/0".into()],
-                        dns: vec![],
+                        private_key: Some("qD+418LUGssYC/V6ZHJQz2YQO8PCWv9gmX4QWtKEMHg=".to_string()),
+                        address: Some("10.8.0.2/32".to_string()),
+                        client_allowed_ips: Some(vec!["0.0.0.0/0".into()]),
+                        dns: Some(vec![]),
                     }
                 ],
             }

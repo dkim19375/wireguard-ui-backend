@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     data::data_manager::save_json_file(&data)?;
 
     println!("Preparing WireGuard");
-    let wg_api = WGApi::new(config.interface.to_owned(), false)?;
+    let wg_api = WGApi::new(config.wireguard_interface.to_owned(), false)?;
 
     let app_values = Arc::new(Mutex::new(WireGuardAppValues {
         wg_api,
