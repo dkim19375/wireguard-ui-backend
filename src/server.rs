@@ -15,6 +15,7 @@ use crate::data::data_manager;
 use crate::data::wireguard_client::{WireGuardClientData, WireGuardOptionalClientData};
 use crate::data::wireguard_data::WireGuardOptionalData;
 use crate::data::wireguard_server::WireGuardOptionalServerData;
+use crate::error::AppError;
 use crate::wireguard::RestartWireGuardErrorType;
 use crate::{wireguard, WireGuardAppValues};
 
@@ -106,7 +107,11 @@ async fn put_wireguard_server(
             Ok(server) => Some(server),
             Err(error) => {
                 return ErrorResponse::from((
-                    StatusCode::INTERNAL_SERVER_ERROR,
+                    if let AppError::RestAPI(_) = error {
+                        StatusCode::BAD_REQUEST
+                    } else {
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    },
                     format!("Could not create server: {error}"),
                 ))
                 .into();
@@ -221,7 +226,11 @@ async fn post_wireguard_clients(
         Ok(client) => client,
         Err(error) => {
             return ErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
+                if let AppError::RestAPI(_) = error {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
                 format!("Could not create client: {error}"),
             ))
             .into();
