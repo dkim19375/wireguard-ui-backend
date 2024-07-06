@@ -66,10 +66,7 @@ pub fn reload_wireguard(interface: &String) -> Result<(), io::Error> {
         .status()
     {
         Err(error) => Err(error),
-        Ok(a) => {
-            println!("A {a}");
-            Ok(())
-        }
+        Ok(_) => Ok(())
     }
 }
 
