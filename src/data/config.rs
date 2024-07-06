@@ -1,6 +1,4 @@
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-
+use crate::error::{AppError, ConfigurationError};
 use netdev::Interface;
 use serde::{Deserialize, Serialize};
 
@@ -17,36 +15,30 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    pub fn get_network_interface_name(&self) -> String {
+    pub fn get_network_interface_name(&self) -> Result<String, AppError> {
         if !self.network_interface.is_empty() {
-            return self.network_interface.to_owned();
+            return Ok(self.network_interface.to_owned());
         }
-        netdev::get_default_interface().unwrap().name
+        netdev::get_default_interface()
+            .map_err(AppError::CouldNotGetDefaultInterface)
+            .map(|interface| interface.name.to_owned())
     }
 
     pub fn get_wireguard_network_interface(&self) -> Result<Interface, ConfigurationError> {
-        netdev::get_interfaces()
-            .iter()
-            .find(|interface| interface.name == self.wireguard_interface)
-            .map(Interface::to_owned)
-            .ok_or_else(|| ConfigurationError {
-                message: format!("WireGuard interface {} not found", self.wireguard_interface),
-            })
+        let mut interfaces = netdev::get_interfaces()
+            .into_iter()
+            .map(|interface| (interface.to_owned(), interface.name));
+        if let Some((interface, _)) =
+            &interfaces.find(|(_, name)| name == &self.wireguard_interface)
+        {
+            return Ok(interface.to_owned().to_owned());
+        };
+        Err(ConfigurationError::WireGuardInterfaceNotFound {
+            interface: self.wireguard_interface.to_owned(),
+            available_interfaces: interfaces.map(|(_, name)| name.to_owned()).collect(),
+        })
     }
 }
-
-#[derive(Debug)]
-pub struct ConfigurationError {
-    pub message: String,
-}
-
-impl Display for ConfigurationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl Error for ConfigurationError {}
 
 fn default_wireguard_interface() -> String {
     if cfg!(target_os = "linux") || cfg!(target_os = "freebsd") {

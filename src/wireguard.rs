@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::io;
 use std::process::Command;
 use std::str::FromStr;
@@ -8,17 +7,27 @@ use defguard_wireguard_rs::key::Key;
 use defguard_wireguard_rs::WireguardInterfaceApi;
 
 use crate::data::wireguard_peer::WireGuardPeer;
+use crate::error::AppError;
 use crate::WireGuardAppValues;
 
 pub fn get_peers(
     app_values: Arc<Mutex<WireGuardAppValues>>,
-) -> Result<Vec<WireGuardPeer>, Box<dyn Error>> {
+) -> Result<Vec<WireGuardPeer>, AppError> {
     let app_values = app_values.lock().unwrap();
     let raw_peers = &app_values.wg_api.read_interface_data()?.peers;
     let mut peers = Vec::<WireGuardPeer>::new();
 
     for client in &app_values.wireguard_data.clients {
-        let key = Key::from_str(&client.public_key)?;
+        let key = match Key::from_str(&client.public_key) {
+            Ok(key) => key,
+            Err(error) => {
+                return Err(AppError::InvalidPublicKey {
+                    public_key: client.public_key.clone(),
+                    client: client.name.clone(),
+                    error,
+                });
+            }
+        };
         let raw_peer_option = &raw_peers.get(&key);
         if let Some(raw_peer) = raw_peer_option {
             peers.push(WireGuardPeer {

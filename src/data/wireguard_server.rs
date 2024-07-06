@@ -1,7 +1,7 @@
-use crate::data::config::{AppConfig, ConfigurationError};
+use crate::data::config::AppConfig;
+use crate::error::{AppError, RestAPIError};
 use crate::WireGuardAppValues;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 use wireguard_keys::Privkey;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +22,7 @@ pub struct WireGuardServerData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireGuardOptionalServerData {
-    pub endpoint: String,
+    pub endpoint: Option<String>,
     pub address: Option<Vec<String>>,
     pub dns: Option<Vec<String>>,
     pub listen_port: Option<u16>,
@@ -38,9 +38,9 @@ pub struct WireGuardOptionalServerData {
 impl WireGuardOptionalServerData {
     pub fn to_wireguard_server_data(
         &self,
-        app_values: Arc<Mutex<WireGuardAppValues>>,
-    ) -> Result<WireGuardServerData, ConfigurationError> {
-        let app_values = app_values.lock().unwrap();
+        default_endpoint: Option<String>,
+        app_values: &WireGuardAppValues,
+    ) -> Result<WireGuardServerData, AppError> {
         let config = &app_values.config;
 
         let private_key = self
@@ -49,14 +49,20 @@ impl WireGuardOptionalServerData {
             .unwrap_or_else(|| Privkey::generate().to_base64());
 
         Ok(WireGuardServerData {
-            endpoint: self.endpoint.to_owned(),
+            endpoint: match self.endpoint.to_owned().or(default_endpoint) {
+                Some(endpoint) => endpoint,
+                None => return Err(AppError::RestAPI(RestAPIError::FieldMissing("endpoint".to_string()))),
+            },
             address: match &self.address {
                 Some(address) => address.to_owned(),
                 None => vec![config.get_wireguard_network_interface()?.ipv4[0].addr.to_string()]
             },
             dns: self.dns.to_owned().unwrap_or_default(),
             listen_port: self.listen_port.unwrap_or(51820),
-            public_key: Privkey::parse(private_key.as_str()).unwrap().pubkey().to_base64(),
+            public_key: Privkey::parse(private_key.as_str())
+                .map_err(|_| AppError::RestAPI(RestAPIError::InvalidPrivateKey(private_key.to_owned())))?
+                .pubkey()
+                .to_base64(),
             private_key: private_key.to_owned(),
             pre_up: self.pre_up.to_owned(),
             post_up: self.post_up.to_owned().or(Some("iptables -A FORWARD -i {WIREGUARD_INTERFACE} -j ACCEPT; iptables -t nat -A POSTROUTING -o {NETWORK_INTERFACE} -j MASQUERADE".to_string())),

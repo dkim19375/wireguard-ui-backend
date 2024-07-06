@@ -1,11 +1,12 @@
-use crate::data::config::AppConfig;
-use crate::data::wireguard_data::WireGuardData;
-use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::{Read, Write};
 
-pub fn read_config_file() -> Result<AppConfig, Box<dyn Error>> {
+use crate::data::config::AppConfig;
+use crate::data::wireguard_data::WireGuardData;
+use crate::error::AppError;
+
+pub fn read_config_file() -> Result<AppConfig, AppError> {
     let mut file = OpenOptions::new()
         .read(true)
         .write(true) // required to set truncate to false
@@ -19,14 +20,14 @@ pub fn read_config_file() -> Result<AppConfig, Box<dyn Error>> {
     Ok(json)
 }
 
-pub fn save_config_file(config: &AppConfig) -> Result<(), Box<dyn Error>> {
+pub fn save_config_file(config: &AppConfig) -> Result<(), AppError> {
     let mut file = File::create("config.yaml")?;
     let yaml = serde_yaml::to_string(config)?;
     file.write_all(yaml.as_bytes())?;
     Ok(())
 }
 
-pub fn read_json_file() -> Result<WireGuardData, Box<dyn Error>> {
+pub fn read_json_file() -> Result<WireGuardData, AppError> {
     let mut file = OpenOptions::new()
         .read(true)
         .write(true) // required to set truncate to false
@@ -44,7 +45,7 @@ pub fn read_json_file() -> Result<WireGuardData, Box<dyn Error>> {
     Ok(json)
 }
 
-pub fn save_json_file(data: &WireGuardData) -> Result<(), Box<dyn Error>> {
+pub fn save_json_file(data: &WireGuardData) -> Result<(), AppError> {
     let mut file = File::create("data.json")?;
     let json = serde_json::to_string_pretty(data)?;
     file.write_all(json.as_bytes())?;

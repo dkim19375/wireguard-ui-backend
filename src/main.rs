@@ -10,6 +10,7 @@ use crate::data::config::AppConfig;
 use crate::data::wireguard_data::WireGuardData;
 
 mod data;
+mod error;
 mod server;
 mod wireguard;
 

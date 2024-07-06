@@ -95,7 +95,14 @@ async fn put_wireguard_server(
 ) -> Response<Body> {
     let mut app_values = app_values_arc.lock().unwrap();
     let server = match body {
-        Some(server) => match server.to_wireguard_server_data(app_values_arc.clone()) {
+        Some(server) => match server.to_wireguard_server_data(
+            app_values
+                .wireguard_data
+                .server
+                .clone()
+                .map(|server| server.endpoint),
+            &app_values,
+        ) {
             Ok(server) => Some(server),
             Err(error) => {
                 return ErrorResponse::from((
@@ -107,9 +114,15 @@ async fn put_wireguard_server(
         },
         None => None,
     };
-    app_values.wireguard_data.server = server.clone();
-    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
-    (StatusCode::OK, Json(server)).into_response()
+    app_values.wireguard_data.server.clone_from(&server);
+    match data_manager::save_json_file(&app_values.wireguard_data) {
+        Ok(_) => (StatusCode::OK, Json(server)).into_response(),
+        Err(error) => ErrorResponse::from((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not save data: {error}"),
+        ))
+        .into(),
+    }
 }
 
 async fn delete_wireguard_server(
@@ -117,8 +130,14 @@ async fn delete_wireguard_server(
 ) -> impl IntoResponse {
     let mut app_values = app_values.lock().unwrap();
     app_values.wireguard_data.server = None;
-    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
-    (StatusCode::OK, String::new())
+    match data_manager::save_json_file(&app_values.wireguard_data) {
+        Ok(_) => (StatusCode::OK, String::new()).into_response(),
+        Err(error) => ErrorResponse::from((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not save data: {error}"),
+        ))
+        .into(),
+    }
 }
 
 async fn get_wireguard_clients(
@@ -136,8 +155,14 @@ async fn put_wireguard_clients(
 ) -> impl IntoResponse {
     let mut app_values = app_values.lock().unwrap();
     app_values.wireguard_data.clients = body;
-    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
-    (StatusCode::OK, String::new())
+    match data_manager::save_json_file(&app_values.wireguard_data) {
+        Ok(_) => (StatusCode::OK, String::new()).into_response(),
+        Err(error) => ErrorResponse::from((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not save data: {error}"),
+        ))
+        .into(),
+    }
 }
 
 async fn get_wireguard_client(
@@ -176,8 +201,15 @@ async fn put_wireguard_client(
             .into()
         }
     }
-    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
-    (StatusCode::OK, String::new()).into_response()
+
+    match data_manager::save_json_file(&app_values.wireguard_data) {
+        Ok(_) => (StatusCode::OK, String::new()).into_response(),
+        Err(error) => ErrorResponse::from((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not save data: {error}"),
+        ))
+        .into(),
+    }
 }
 
 async fn post_wireguard_clients(
@@ -185,7 +217,7 @@ async fn post_wireguard_clients(
     Json(body): Json<WireGuardOptionalClientData>,
 ) -> Response<Body> {
     let mut app_values = app_values_arc.lock().unwrap();
-    let new_client = match body.to_wireguard_client_data(app_values_arc.clone()) {
+    let new_client = match body.to_wireguard_client_data(None, &app_values) {
         Ok(client) => client,
         Err(error) => {
             return ErrorResponse::from((
@@ -208,17 +240,28 @@ async fn post_wireguard_clients(
         .into();
     }
     app_values.wireguard_data.clients.push(new_client.clone());
-    data_manager::save_json_file(&app_values.wireguard_data).unwrap();
-    (StatusCode::OK, Json(new_client)).into_response()
+
+    match data_manager::save_json_file(&app_values.wireguard_data) {
+        Ok(_) => (StatusCode::OK, Json(new_client)).into_response(),
+        Err(error) => ErrorResponse::from((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not save data: {error}"),
+        ))
+        .into(),
+    }
 }
 
 async fn get_wireguard_peers(
     State(app_values): State<Arc<Mutex<WireGuardAppValues>>>,
-) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        Json(wireguard::get_peers(app_values.clone()).unwrap()),
-    )
+) -> Response<Body> {
+    match wireguard::get_peers(app_values.clone()) {
+        Ok(peers) => (StatusCode::OK, Json(peers)).into_response(),
+        Err(error) => ErrorResponse::from((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Could not get peers: {error}"),
+        ))
+        .into(),
+    }
 }
 
 async fn wireguard_restart(
@@ -308,7 +351,7 @@ async fn sample() -> impl IntoResponse {
         serde_json::to_string(
             &WireGuardOptionalData {
                 server: Some(WireGuardOptionalServerData {
-                    endpoint: "endpoint.com:51820".into(),
+                    endpoint: Some("endpoint.com:51820".into()),
                     address: Some(vec!["10.8.0.1/24".into()]),
                     dns: Some(vec!["1.1.1.1".into()]),
                     listen_port: Some(51820),
@@ -322,7 +365,7 @@ async fn sample() -> impl IntoResponse {
                 }),
                 clients: vec![
                     WireGuardOptionalClientData {
-                        name: "Sample Client".into(),
+                        name: Some("Sample Client".into()),
                         uuid: Some(Uuid::new_v4()),
                         enabled: Some(true),
                         generate_preshared_key: Some(true),

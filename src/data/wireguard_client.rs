@@ -1,12 +1,11 @@
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use wireguard_keys::{Privkey, Secret};
 
-use crate::data::config::ConfigurationError;
+use crate::error::{AppError, RestAPIError};
 use crate::WireGuardAppValues;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +29,7 @@ pub struct WireGuardClientData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireGuardOptionalClientData {
-    pub name: String,
+    pub name: Option<String>,
     pub uuid: Option<Uuid>,
     pub enabled: Option<bool>,
     pub generate_preshared_key: Option<bool>,
@@ -46,9 +45,9 @@ pub struct WireGuardOptionalClientData {
 impl WireGuardOptionalClientData {
     pub fn to_wireguard_client_data(
         &self,
-        app_values: Arc<Mutex<WireGuardAppValues>>,
-    ) -> Result<WireGuardClientData, ConfigurationError> {
-        let app_values = app_values.lock().unwrap();
+        default_name: Option<String>,
+        app_values: &WireGuardAppValues,
+    ) -> Result<WireGuardClientData, AppError> {
         let config = &app_values.config;
         let data = &app_values.wireguard_data;
         let server = &data.server;
@@ -57,22 +56,25 @@ impl WireGuardOptionalClientData {
             .to_owned()
             .unwrap_or_else(|| Privkey::generate().to_base64());
 
-        let mut beginning_address = server
-            .clone()
-            .map(|server| {
+        let mut beginning_address = match server.clone() {
+            Some(server) => {
                 let mut addr = server.address[0].clone();
                 addr = addr
                     .rsplit_once('/')
                     .map(|(ip, _)| ip.to_string())
                     .unwrap_or(addr);
-                Ok(Ipv4Addr::from_str(addr.as_str()).unwrap())
-            })
-            .unwrap_or_else(|| {
-                config
-                    .clone()
-                    .get_wireguard_network_interface()
-                    .map(|i| i.ipv4[0].addr)
-            })?;
+                match Ipv4Addr::from_str(addr.as_str()) {
+                    Ok(ip) => ip,
+                    Err(_) => {
+                        return Err(AppError::InvalidServerAddress(server.address[0].clone()));
+                    }
+                }
+            }
+            None => config
+                .clone()
+                .get_wireguard_network_interface()
+                .map(|i| i.ipv4[0].addr)?,
+        };
         // increment
         let mut octets = beginning_address.octets();
         if octets[3] < 255 {
@@ -85,7 +87,14 @@ impl WireGuardOptionalClientData {
         let ip = format!("{beginning_address}/32");
 
         Ok(WireGuardClientData {
-            name: self.name.to_owned(),
+            name: match self.name.to_owned().or(default_name) {
+                Some(name) => name,
+                None => {
+                    return Err(AppError::RestAPI(RestAPIError::FieldMissing(
+                        "name".to_string(),
+                    )))
+                }
+            },
             uuid: self.uuid.unwrap_or_else(Uuid::new_v4),
             enabled: self.enabled.unwrap_or(false),
             preshared_key: self.preshared_key.to_owned().or_else(|| {
@@ -95,7 +104,9 @@ impl WireGuardOptionalClientData {
                 }
             }),
             public_key: Privkey::parse(private_key.as_str())
-                .unwrap()
+                .map_err(|_| {
+                    AppError::RestAPI(RestAPIError::InvalidPrivateKey(private_key.to_owned()))
+                })?
                 .pubkey()
                 .to_base64(),
             server_allowed_ips: self
