@@ -11,7 +11,7 @@ repository = "https://github.com/dkim19375/wireguard-ui-backend"
 async-recursion = "1.1.1"
 axum = "0.8.0"
 base64 = "0.22.1"
-defguard_wireguard_rs = "0.4.2"
+defguard_wireguard_rs = "0.8.0"
 netdev = { version = "0.30.0", features = ["serde"] }
 nix = { version = "0.30.0", features = ["user"] }
 serde = { version = "1.0.198", features = ["derive"] }
